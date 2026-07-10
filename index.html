@@ -4386,7 +4386,9 @@ const SettingsPage = {
             <button type="submit" class="btn btn-primary" style="flex:2;">${configured ? 'Save & Reconnect' : 'Connect This Phone'}</button>
           </div>
         </form>
-        ${configured ? `<button class="btn btn-danger btn-sm btn-block" id="sync-disable" style="margin-top:12px;">Turn Off Sync on This Phone</button>` : ''}
+        ${configured ? `
+        <button class="btn btn-secondary btn-sm btn-block" id="sync-push-now" style="margin-top:12px;">🔼 Push All My Data to Supabase Now</button>
+        <button class="btn btn-danger btn-sm btn-block" id="sync-disable" style="margin-top:8px;">Turn Off Sync on This Phone</button>` : ''}
       </div>
 
       <div class="card">
@@ -4475,6 +4477,21 @@ create policy "allow all" on records for all
         SyncEngine.disable();
         this.render();
       }
+    };
+
+    const pushNowBtn = document.getElementById('sync-push-now');
+    if (pushNowBtn) pushNowBtn.onclick = async () => {
+      const ok = await Modal.confirm(
+        "This re-sends everything on this phone (products, sales, customers, etc.) to the shared database. Use this if other phones aren't seeing your data. Continue?",
+        'Push All Data'
+      );
+      if (!ok) return;
+      pushNowBtn.disabled = true;
+      pushNowBtn.textContent = 'Pushing…';
+      await SyncEngine.pushAllLocalData();
+      pushNowBtn.disabled = false;
+      pushNowBtn.textContent = '🔼 Push All My Data to Supabase Now';
+      Toast.show('Push complete. Give other phones ~10 seconds, then reconnect them.', 'success');
     };
   },
 
