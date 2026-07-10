@@ -624,11 +624,19 @@ const SyncEngine = (() => {
 
   function _headers() {
     const c = getConfig();
-    return {
+    // Supabase now issues two key formats:
+    //  - legacy JWT-style anon keys (start with "eyJ") — need BOTH apikey and
+    //    Authorization: Bearer headers set to the same value.
+    //  - new opaque keys (start with "sb_publishable_" / "sb_secret_") — must
+    //    be sent ONLY on the apikey header; sending it as a Bearer token too
+    //    gets the request rejected as "not a valid JWT".
+    const isNewStyleKey = /^sb_/.test(c.anonKey || '');
+    const headers = {
       'apikey': c.anonKey,
-      'Authorization': 'Bearer ' + c.anonKey,
       'Content-Type': 'application/json'
     };
+    if (!isNewStyleKey) headers['Authorization'] = 'Bearer ' + c.anonKey;
+    return headers;
   }
 
   function _getQueue() {
@@ -668,9 +676,11 @@ const SyncEngine = (() => {
     /** Quick check that the URL/key actually work, used by the Settings screen. */
     async testConnection(url, anonKey) {
       try {
-        const res = await fetch(`${url.replace(/\/+$/, '')}/rest/v1/records?select=id&limit=1`, {
-          headers: { apikey: anonKey, Authorization: 'Bearer ' + anonKey }
-        });
+        const isNewStyleKey = /^sb_/.test(anonKey || '');
+        const headers = isNewStyleKey
+          ? { apikey: anonKey }
+          : { apikey: anonKey, Authorization: 'Bearer ' + anonKey };
+        const res = await fetch(`${url.replace(/\/+$/, '')}/rest/v1/records?select=id&limit=1`, { headers });
         if (res.ok) return { ok: true };
         const text = await res.text();
         return { ok: false, error: `Server responded with ${res.status}: ${text.slice(0, 200)}` };
