@@ -303,7 +303,76 @@ body.modal-open { overflow: hidden; }
   .drawer-backdrop.open { display: block; }
 }
 
-/* Print styles: used for invoice printing. Only #print-area is shown. */
+/* ==========================================================================
+   Mobile pass — everything below targets phones specifically. The goal:
+   no sideways table scrolling, no tiny tap targets, no cramped tab bars.
+   Tables get converted to stacked "cards" via data-label attributes that
+   tableMobileEnhancer() (see bottom of the JS) fills in automatically for
+   every table on every screen — no need to touch each screen's markup.
+   ========================================================================== */
+@media (max-width: 640px) {
+  /* Bigger, easier-to-hit tap targets everywhere */
+  .btn { padding: 12px 16px; font-size: 15px; min-height: 44px; }
+  .btn-sm { padding: 9px 13px; font-size: 13.5px; min-height: 38px; }
+  .btn-icon { padding: 10px; min-height: 44px; min-width: 44px; }
+  input, select, textarea {
+    font-size: 16px; /* 16px stops iOS/Android auto-zoom-on-focus */
+    padding: 12px 12px; min-height: 46px;
+  }
+  label { font-size: 13.5px; margin-bottom: 14px; }
+  .icon-btn { width: 42px; height: 42px; }
+
+  /* Toolbars: let buttons stack cleanly instead of cramming/overflowing */
+  .toolbar { gap: 8px; }
+  .toolbar > * { flex: 1 1 auto; }
+  .toolbar .search-box { flex-basis: 100%; }
+  .toolbar select { flex: 1 1 auto; width: auto; min-width: 0; }
+  .toolbar .btn { flex: 1 1 auto; white-space: normal; }
+
+  /* Section/tab strips (Settings sub-tabs, Billing tabs): scroll, don't cram */
+  .tabs {
+    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; padding-bottom: 2px;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab-btn { padding: 12px 14px; font-size: 14px; white-space: nowrap; flex-shrink: 0; }
+
+  /* Modals: use almost the whole screen instead of a small floating box */
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal-box {
+    max-width: 100%; width: 100%; max-height: 94vh; border-radius: 16px 16px 0 0;
+  }
+  .modal-wide { max-width: 100%; }
+  .form-actions .btn { flex: 1; }
+
+  /* ---- Tables become stacked cards: no more sideways scrolling ---- */
+  .table-wrap { overflow-x: visible; border: none; background: none; }
+  .table-wrap table { min-width: 0; width: 100%; }
+  .table-wrap thead { display: none; }
+  .table-wrap tbody { display: block; }
+  .table-wrap tbody tr {
+    display: block; background: var(--paper-raised); border: 1px solid var(--line);
+    border-radius: 12px; margin-bottom: 10px; padding: 4px 12px;
+  }
+  .table-wrap tbody tr:hover { background: var(--paper-raised); }
+  .table-wrap tbody td {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    text-align: right; border-bottom: 1px dashed var(--line); padding: 9px 0;
+  }
+  .table-wrap tbody td:last-child { border-bottom: none; }
+  .table-wrap tbody td.num { text-align: right; }
+  .table-wrap tbody td[data-label]::before {
+    content: attr(data-label); font-weight: 600; color: var(--muted); text-align: left;
+    font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
+    font-family: var(--font-body); flex-shrink: 0;
+  }
+  /* Cells with no meaningful label (checkboxes, thumbnails, action buttons)
+     span full width with no label row, so they don't look like awkward blanks. */
+  .table-wrap tbody td[data-label=""] { justify-content: flex-start; }
+  .table-wrap tbody td[data-label=""]::before { content: none; }
+  .table-wrap tbody td[data-label=""] input[type="checkbox"] { transform: scale(1.3); }
+}
+
 @media print {
   body * { visibility: hidden; }
   #print-area, #print-area *, #print-target, #print-target * { visibility: visible; }
@@ -814,6 +883,13 @@ const SyncEngine = (() => {
       tick();
       _timer = setInterval(tick, SYNC_INTERVAL_MS);
       window.addEventListener('online', tick);
+      // Mobile browsers pause setInterval while the screen is locked or the
+      // app is in the background — so on every return to the app, sync
+      // immediately instead of waiting for the next scheduled tick.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') tick();
+      });
+      window.addEventListener('focus', tick);
     }
   };
 })();
@@ -5074,6 +5150,40 @@ const App = {
 };
 
 document.addEventListener('DOMContentLoaded', () => App.boot());
+
+/* ===================== mobile-tables.js ===================== */
+/* =========================================================================
+   On phones, tables collapse into stacked cards via CSS (see the mobile
+   media query above) that reads each cell's data-label attribute. Rather
+   than editing every single screen's table markup by hand, this walks any
+   table that gets rendered and copies its header text onto each cell once,
+   automatically, so every current and future table gets the mobile
+   treatment for free.
+   ========================================================================= */
+function labelTableForMobile(table) {
+  if (table.dataset.mobileLabeled === '1') return;
+  const headerCells = [...table.querySelectorAll('thead th')];
+  if (headerCells.length === 0) return;
+  const labels = headerCells.map(th => th.textContent.trim());
+  table.querySelectorAll('tbody tr').forEach(row => {
+    [...row.children].forEach((td, i) => {
+      if (td.hasAttribute('data-label')) return; // respect any manual override
+      td.setAttribute('data-label', labels[i] || '');
+    });
+  });
+  table.dataset.mobileLabeled = '1';
+}
+
+function labelAllTables(root) {
+  (root || document).querySelectorAll('table').forEach(labelTableForMobile);
+}
+
+// Re-run automatically whenever the app swaps in new screen content, so
+// newly rendered tables (Inventory, Billing, Reports, etc.) get labeled
+// without every screen's own code needing to call this directly.
+const _tableObserver = new MutationObserver(debounce(() => labelAllTables(document), 30));
+_tableObserver.observe(document.body, { childList: true, subtree: true });
+
 
   </script>
 </body>
